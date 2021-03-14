@@ -1,286 +1,174 @@
-//! Unit tests for the Stp258Currencies module.
+//! Unit tests for the SerpMarket module.
 
 #![cfg(test)]
 
 use super::*;
-use frame_support::{assert_noop, assert_ok};
+use frame_support::{assert_ok};
 use mock::{Event, *};
 use sp_runtime::traits::BadOrigin;
 
 #[test]
-fn stp258_currency_lockable_should_work() {
+fn get_stable_price_should_work() {
+	assert_ok!(SerpMarket::get_stable_price(STP258_TOKEN_ID, 1.1));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 1.1 * 1_100);
+	assert_ok!(SerpMarket::get_stable_price(STP258_JCHF_ID, 1));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 1 * 1_000);
+	assert_ok!(SerpMarket::get_stable_price(STP258_JUSD_ID, 0.9));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 0.9 * 1_000);
+}
+
+#[test]
+fn get_relative_price_should_work() {
+	assert_ok!(SerpMarket::get_relative_price(STP258_TOKEN_ID, 1.3, STP258_NATIVE_ID, 0.065 * 1_000));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 20);
+	assert_ok!(SerpMarket::get_relative_price(STP258_NATIVE_ID, 2_000, STP258_JCHF_ID, 1));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 1);
+	assert_ok!(SerpMarket::get_relative_price(STP258_JUSD_ID, 1.1599, STP258_JCHF_ID, 0.92));
+	assert_eq!(SerpMarket::price(STP258_TOKEN_ID), 1.260);
+}
+
+#[test]
+fn quoting_serp_price_should_work() {
+	let price = 1.3 * 1_000;
+	let serp_quote_multiple = SerpMarket::GetSerpQuoteMultiple;
+	let serp_quoted_price = SerpMarket::quote_serp_price(price);
+	assert_eq!(serp_quoted_price, * 1_000);
+}
+
+#[test]
+fn calculate_supply_change_should_work() {
+let price = 1_000 + 100;
+	let supply = u64::max_value();
+	let contract_by = SerpMarket::calculate_supply_change(price);
+	// the error should be low enough
+	assert_eq!(contract_by, u64::max_value() / 10 - 1);
+	assert_eq!(contract_by, u64::max_value() / 10 + 1);
+}
+
+#[test]
+fn expand_supply_should_work() {
 	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
+		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
-			assert_ok!(Stp258Currencies::set_lock(ID_1, STP258_TOKEN_ID, &ALICE, 50 * 1000));
-			assert_eq!(Stp258Tokens::locks(&ALICE, STP258_TOKEN_ID).len(), 1);
-			assert_ok!(Stp258Currencies::set_lock(ID_1, STP258_NATIVE_ID, &ALICE, 50  * 1000));
-			assert_eq!(PalletBalances::locks(&ALICE).len(), 1);
+			assert_ok!(PalletBalances::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 500_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 500_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 500_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 1_000_000);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 0);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 0 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 150_000);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 0 * 1_000);
+			assert_ok!(SerpMarket::reserve(STP258_TOKEN_ID, &SERPER_ACC, 150_000 * 1_000));
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 150_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 350_000 * 1_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 1_000_000);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+
+			assert_ok!(SerpMarket::expand_supply(STP258_TOKEN_ID, 100_000 * 1000)); 
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 500_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 575_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 350_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 0);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 0 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 169_230.769);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 175_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 980_769.231);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_100_000 * 1_000);
 		});
 }
 
 #[test]
-fn stp258_currency_reservable_should_work() {
+fn contract_supply_should_work() {
 	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
+		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
-			assert_eq!(Stp258Currencies::total_issuance(STP258_NATIVE_ID), 200);
-			assert_eq!(Stp258Currencies::total_issuance(STP258_TOKEN_ID), 200 * 1000);
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 100 * 1000);
-			assert_eq!(Stp258Native::free_balance(&ALICE), 100);
+			assert_ok!(Stp258Native::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 500_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 500_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 500_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 1_000_000);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 0);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 0 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 150_000);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 0 * 1_000);
+			assert_ok!(Stp258Tokens::reserve(STP258_TOKEN_ID, &SERPER_ACC, 150_000 * 1_000));
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 150_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 350_000 * 1_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 1_000_000);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
 
-			assert_ok!(Stp258Currencies::reserve(STP258_TOKEN_ID, &ALICE, 30 * 1000));
-			assert_ok!(Stp258Currencies::reserve(STP258_NATIVE_ID, &ALICE, 40));
-			assert_eq!(Stp258Currencies::reserved_balance(STP258_TOKEN_ID, &ALICE), 30 * 1000);
-			assert_eq!(Stp258Currencies::reserved_balance(STP258_NATIVE_ID, &ALICE), 40);
+			assert_ok!(SerpMarket::contract_supply(STP258_TOKEN_ID, 10_000 * 1000)); 
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
+			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 500_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 500_000 * 1_000);
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 350_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 0);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 0 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 170_600);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 140_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 980_769.231);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_100_000 * 1_000);
 		});
-}
-
-#[test]
-fn stp258_native_lockable_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Native::set_lock(ID_1, &ALICE, 10));
-			assert_eq!(PalletBalances::locks(&ALICE).len(), 1);
-			assert_ok!(Stp258Native::remove_lock(ID_1, &ALICE));
-			assert_eq!(PalletBalances::locks(&ALICE).len(), 0);
-		});
-}
-
-#[test]
-fn stp258_native_reservable_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Native::reserve(&ALICE, 50));
-			assert_eq!(Stp258Native::reserved_balance(&ALICE), 50);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_lockable() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::set_lock(ID_1, &ALICE, 10));
-			assert_eq!(PalletBalances::locks(&ALICE).len(), 1);
-			assert_ok!(AdaptedStp258Asset::remove_lock(ID_1, &ALICE));
-			assert_eq!(PalletBalances::locks(&ALICE).len(), 0);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_reservable() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::reserve(&ALICE, 50));
-			assert_eq!(AdaptedStp258Asset::reserved_balance(&ALICE), 50);
-		});
-}
-
-#[test]
-fn stp258_currency_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Currencies::transfer(Some(ALICE).into(), BOB, STP258_TOKEN_ID, 50 * 1000));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 50 * 1000);
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &BOB), 150 * 1000);
-		});
-}
-
-#[test]
-fn stp258_currency_extended_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(<Stp258Currencies as Stp258CurrencyExtended<AccountId>>::update_balance(
-				STP258_TOKEN_ID, &ALICE, 50 * 1000
-			));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 150 * 1000);
-		});
-}
-
-#[test]
-fn stp258_native_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Currencies::transfer_native_currency(Some(ALICE).into(), BOB, 50));
-			assert_eq!(Stp258Native::free_balance(&ALICE), 50);
-			assert_eq!(Stp258Native::free_balance(&BOB), 150);
-
-			assert_ok!(Stp258Native::transfer(&ALICE, &BOB, 10));
-			assert_eq!(Stp258Native::free_balance(&ALICE), 40);
-			assert_eq!(Stp258Native::free_balance(&BOB), 160);
-
-			assert_eq!(Stp258Currencies::slash(STP258_NATIVE_ID, &ALICE, 10), 0);
-			assert_eq!(Stp258Native::free_balance(&ALICE), 30);
-			assert_eq!(Stp258Native::total_issuance(), 190);
-		});
-}
-
-#[test]
-fn stp258_native_extended_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Native::update_balance(&ALICE, 10));
-			assert_eq!(Stp258Native::free_balance(&ALICE), 110);
-
-			assert_ok!(<Stp258Currencies as Stp258CurrencyExtended<AccountId>>::update_balance(
-				STP258_NATIVE_ID,
-				&ALICE,
-				10
-			));
-			assert_eq!(Stp258Native::free_balance(&ALICE), 120);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_transfer() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::transfer(&ALICE, &BOB, 50));
-			assert_eq!(PalletBalances::total_balance(&ALICE), 50);
-			assert_eq!(PalletBalances::total_balance(&BOB), 150);
-
-			// creation fee
-			assert_ok!(AdaptedStp258Asset::transfer(&ALICE, &EVA, 10));
-			assert_eq!(PalletBalances::total_balance(&ALICE), 40);
-			assert_eq!(PalletBalances::total_balance(&EVA), 10);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_deposit() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::deposit(&EVA, 50));
-			assert_eq!(PalletBalances::total_balance(&EVA), 50);
-			assert_eq!(PalletBalances::total_issuance(), 250);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_withdraw() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::withdraw(&ALICE, 100));
-			assert_eq!(PalletBalances::total_balance(&ALICE), 0);
-			assert_eq!(PalletBalances::total_issuance(), 100);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_slash() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_eq!(AdaptedStp258Asset::slash(&ALICE, 101), 1);
-			assert_eq!(PalletBalances::total_balance(&ALICE), 0);
-			assert_eq!(PalletBalances::total_issuance(), 100);
-		});
-}
-
-#[test]
-fn stp258_asset_adapting_pallet_balances_update_balance() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(AdaptedStp258Asset::update_balance(&ALICE, -10));
-			assert_eq!(PalletBalances::total_balance(&ALICE), 90);
-			assert_eq!(PalletBalances::total_issuance(), 190);
-		});
-}
-
-#[test]
-fn update_balance_call_should_work() {
-	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
-		.build()
-		.execute_with(|| {
-			assert_ok!(Stp258Currencies::update_balance(
-				Origin::root(),
-				ALICE,
-				STP258_NATIVE_ID,
-				-10
-			));
-			assert_eq!(Stp258Native::free_balance(&ALICE), 90);
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 100 * 1000);
-			assert_ok!(Stp258Currencies::update_balance(Origin::root(), ALICE, STP258_TOKEN_ID, 10 * 1000));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 110 * 1000);
-		});
-}
-
-#[test]
-fn update_balance_call_fails_if_not_root_origin() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_noop!(
-			Stp258Currencies::update_balance(Some(ALICE).into(), ALICE, STP258_TOKEN_ID, 100 * 1000),
-			BadOrigin
-		);
-	});
 }
 
 #[test]
 fn call_event_should_work() {
 	ExtBuilder::default()
-		.one_hundred_for_alice_n_bob()
+		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
 			System::set_block_number(1);
 
-			assert_ok!(Stp258Currencies::transfer(Some(ALICE).into(), BOB, STP258_TOKEN_ID, 50 * 1000));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 50 * 1000);
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &BOB), 150 * 1000);
+			assert_ok!(SerpMarket::get_stable_price(STP258_TOKEN_ID, 1.1) 1.1 * 1_000);
 
-			let transferred_event = Event::stp258_currencies(crate::Event::Transferred(STP258_TOKEN_ID, ALICE, BOB, 50 * 1000));
+			let transferred_event = Event::serp_market(crate::Event::NewPrice(STP258_TOKEN_ID,1.1 * 1_000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+		
+			assert_ok!(Stp258Native::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
+			assert_ok!(Stp258Tokens::reserve(STP258_TOKEN_ID, &SERPER_ACC, 150_000 * 1_000));
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 500_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 150_000);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 150_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 1_000_000);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+			assert_ok!(SerpMarket::expand_supply(STP258_TOKEN_ID, 100_000 * 1000)); 
+			assert_eq!(SerpMarket::free_balance(STP258_TOKEN_ID, &SETT_PAY_ACC), 575_000 * 1_000);
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 169_230.769);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 175_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 980_769.231);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_100_000 * 1_000);
+
+			let transferred_event = Event::serp_market(crate::Event::SerpedUpSupply(STP258_TOKEN_ID, 100_000 * 1000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+			
+			let transferred_event = Event::serp_market(crate::Event::NewPrice(STP258_TOKEN_ID,1.3 * 1_000));
 			assert!(System::events().iter().any(|record| record.event == transferred_event));
 
-			assert_ok!(<Stp258Currencies as Stp258Currency<AccountId>>::transfer(
-				STP258_TOKEN_ID, &ALICE, &BOB, 10 * 1000
-			));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 40 * 1000);
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &BOB), 160 * 1000);
 
-			let transferred_event = Event::stp258_currencies(crate::Event::Transferred(STP258_TOKEN_ID, ALICE, BOB, 10 * 1000));
+			assert_ok!(Stp258Native::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 150_000);
+			assert_ok!(SerpMarket::reserve(STP258_TOKEN_ID, &SERPER_ACC, 150_000 * 1_000));
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 150_000 * 1_000);
+			assert_ok!(SerpMarket::contract_supply(STP258_TOKEN_ID, 10_000 * 1000)); 
+			assert_eq!(Stp258Native::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC), 170_600);
+			assert_eq!(SerpMarket::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC), 140_000 * 1_000);
+			assert_eq!(Stp258Native::total_issuance(STP258_NATIVE_ID), 980_769.231);
+			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_100_000 * 1_000);
+
+			let transferred_event = Event::serp_market(crate::Event::SerpedDownSupply(STP258_TOKEN_ID, 10_000 * 1000));
 			assert!(System::events().iter().any(|record| record.event == transferred_event));
-
-			assert_ok!(<Stp258Currencies as Stp258Currency<AccountId>>::deposit(
-				STP258_TOKEN_ID, &ALICE, 100 * 1000
-			));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 140 * 1000);
-
-			let transferred_event = Event::stp258_currencies(crate::Event::Deposited(STP258_TOKEN_ID, ALICE, 100 * 1000));
-			assert!(System::events().iter().any(|record| record.event == transferred_event));
-
-			assert_ok!(<Stp258Currencies as Stp258Currency<AccountId>>::withdraw(
-				STP258_TOKEN_ID, &ALICE, 20 * 1000
-			));
-			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &ALICE), 120 * 1000);
-
-			let transferred_event = Event::stp258_currencies(crate::Event::Withdrawn(STP258_TOKEN_ID, ALICE, 20 * 1000));
+			
+			let transferred_event = Event::serp_market(crate::Event::NewPrice(STP258_TOKEN_ID,1.03 * 1_000));
 			assert!(System::events().iter().any(|record| record.event == transferred_event));
 		});
 }

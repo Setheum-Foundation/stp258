@@ -12,7 +12,7 @@ use sp_runtime::{
 	AccountId32, ModuleId,
 };
 
-use crate as stp258_currencies;
+use crate as serp_market;
 
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
@@ -83,12 +83,23 @@ impl stp258_tokens::Config for Runtime {
 
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
+pub const STP258_JUSD_ID: CurrencyId = 3;
+pub const STP258_JCHF_ID: CurrencyId = 4;
 
-const STP258_BASE_UNIT: u64 = 1000;
+const STP258_BASE_UNIT: Balance = 1000;
+
+const SERP_QUOTE_MULTIPLE: Balance = 2;
+const SERPER_RATIO: Balance = 25;
+const SETT_PAY_RATIO: Balance = 75;
 
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetBaseUnit: u64 =  STP258_BASE_UNIT;
+	pub const GetBaseUnit: Balance =  STP258_BASE_UNIT;
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetSerperAcc: AccountId = SERPER_ACC;
+	pub const GetSerpQuoteMultiple: Balance = SERP_QUOTE_MULTIPLE;
+	pub const GetSerperRatio: Balance = SERPER_RATIO;
+	pub const GetSettPayRatio: Balance = SETT_PAY_RATIO;
 }
 
 impl Config for Runtime {
@@ -97,6 +108,10 @@ impl Config for Runtime {
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
 	type GetBaseUnit = GetBaseUnit;
+	type GetSettPayAcc = GetSettPayAcc;
+	type GetSerperAcc = GetSerperAcc;
+	type GetSerperRatio = GetSerperRatio;
+	type GetSettPayRatio = GetSettPayRatio;
 	type WeightInfo = ();
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
@@ -112,16 +127,14 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
-		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
+		SerpMarket: serp_market::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}
 );
 
-pub const ALICE: AccountId = AccountId32::new([1u8; 32]);
-pub const BOB: AccountId = AccountId32::new([2u8; 32]);
-pub const EVA: AccountId = AccountId32::new([5u8; 32]);
-pub const ID_1: LockIdentifier = *b"1       ";
+pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
+pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
 
 pub struct ExtBuilder {
 	endowed_accounts: Vec<(AccountId, CurrencyId, Balance)>,
@@ -141,12 +154,16 @@ impl ExtBuilder {
 		self
 	}
 
-	pub fn one_hundred_for_alice_n_bob(self) -> Self {
+	pub fn five_hundred_thousand_for_sett_pay_n_serper(self) -> Self {
 		self.balances(vec![
-			(ALICE, STP258_NATIVE_ID, 100),
-			(BOB, STP258_NATIVE_ID, 100),
-			(ALICE, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
-			(BOB, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_NATIVE_ID, 500_000),
+			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
+			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
 		])
 	}
 

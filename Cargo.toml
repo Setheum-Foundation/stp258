@@ -4,7 +4,7 @@ description = 'Setheum Elastic Reserve Protocol (SERP) Market Pallet'
 edition = '2018'
 homepage = 'https://setheum.xyz'
 license = 'Apache-2.0 License'
-name = 'stp258-currencies'
+name = 'serp-market'
 repository = 'https://github.com/Setheum-Labs/Setheum/'
 version = '0.5.0-dev'
 
@@ -18,10 +18,14 @@ sp-std = { version = "3.0.0", default-features = false }
 frame-support = { version = "3.0.0", default-features = false }
 frame-system = { version = "3.0.0", default-features = false }
 
-stp258-traits = { version = '0.5.0-dev', git = "https://github.com/Setheum-Labs/stp258-traits", branch = "alpha" }
+stp258-traits = { version = '0.5.0-dev', git = "https://github.com/Setheum-Labs/stp258-traits", branch = "new-serp-market" }
 orml-utilities = { version = "0.4.0", default-features = false }
 
 funty = { version = "=1.1.0", default-features = false } # https://github.com/bitvecto-rs/bitvec/issues/105
+
+num-rational = { default-features = false, version = '0.4.0' }
+num-traits = { version = "0.2.14", default-features = false }
+fixed = { default-features = false, version = '1.6.0' }
 
 [dev-dependencies]
 sp-core = "3.0.0"
@@ -39,5 +43,8 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"stp258-traits/std",
+	"fixed/std",
+	"num-traits/std",
+	"num-rational/std",
 	"orml-utilities/std",
 ]
