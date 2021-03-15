@@ -11,7 +11,6 @@ use frame_support::{
 	},
 };
 use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
-use fixed::{types::extra::U64, FixedU128};
 use stp258_traits::{
 	account::MergeAccount,
 	arithmetic::{Signed, SimpleArithmetic},
@@ -52,8 +51,6 @@ pub mod module {
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	pub(crate) type CurrencyIdOf<T> =
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::CurrencyId;
-	pub(crate) type AmountOf<T> =
-		<<T as Config>::Stp258Currency as Stp258CurrencyExtended<<T as frame_system::Config>::AccountId>>::Amount;
 	pub(crate) type AccountIdOf<T> =
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::AccountId;
 
@@ -82,15 +79,15 @@ pub mod module {
 		/// The Serp quote multiple type for qUOTE, quoting 
 		/// `(mintrate * SERP_QUOTE_MULTIPLE) = SerpQuotedPrice`.
 		#[pallet::constant]
-		type GetSerpQuoteMultiple: Get<u64>;
+		type GetSerpQuoteMultiple: Get<BalanceOf<Self>>;
 
 		/// The Serper ratio type getter
 		#[pallet::constant]
-		type GetSerperRatio: Get<u64>;
+		type GetSerperRatio: Get<BalanceOf<Self>>;
 
 		/// The SettPay ratio type getter
 		#[pallet::constant]
-		type GetSettPayRatio: Get<u64>;
+		type GetSettPayRatio: Get<BalanceOf<Self>>;
 
 		/// The native asset (Dinar) Currency ID type
 		#[pallet::constant]
@@ -98,7 +95,7 @@ pub mod module {
 
 		/// The balance of an account.
 		#[pallet::constant]
-		type GetBaseUnit: Get<u64>;
+		type GetBaseUnit: Get<BalanceOf<Self>>;
 		
 
 		/// Weight information for extrinsics in this module.
@@ -127,7 +124,6 @@ pub mod module {
 		/// Currency transfer success. [currency_id, from, to, amount]
 		Transferred(CurrencyIdOf<T>, T::AccountId, T::AccountId, BalanceOf<T>),
 		/// Update balance success. [currency_id, who, amount]
-		BalanceUpdated(CurrencyIdOf<T>, T::AccountId, AmountOf<T>),
 		/// Deposit success. [currency_id, who, amount]
 		Deposited(CurrencyIdOf<T>, T::AccountId, BalanceOf<T>),
 		/// Withdraw success. [currency_id, who, amount]
@@ -137,7 +133,7 @@ pub mod module {
 		/// Serp Contract Supply successful. [currency_id, who, amount]
 		SerpedDownSupply(CurrencyIdOf<T>, BalanceOf<T>),
 		/// The New Price of Currency. [currency_id, price]
-		NewPrice(CurrencyIdOf<T>, u64),
+		NewPrice(CurrencyIdOf<T>, BalanceOf<T>),
 	}
 
 	#[pallet::hooks]
@@ -180,28 +176,13 @@ pub mod module {
 			Self::deposit_event(Event::Transferred(T::GetStp258NativeId::get(), from, to, amount));
 			Ok(().into())
 		}
-
-		/// update amount of account `who` under `currency_id`.
-		///
-		/// The dispatch origin of this call must be _Root_.
-		#[pallet::weight(T::WeightInfo::update_balance_non_native_currency())]
-		pub fn update_balance(
-			origin: OriginFor<T>,
-			who: <T::Lookup as StaticLookup>::Source,
-			currency_id: CurrencyIdOf<T>,
-			amount: AmountOf<T>,
-		) -> DispatchResultWithPostInfo {
-			ensure_root(origin)?;
-			let dest = T::Lookup::lookup(who)?;
-			<Self as Stp258CurrencyExtended<T::AccountId>>::update_balance(currency_id, &dest, amount)?;
-			Ok(().into())
-		}
 	}
 }
 
 impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pallet<T> {
 	type CurrencyId = CurrencyIdOf<T>;
 	type Balance = BalanceOf<T>;
+	type AccountId = AccountIdOf<T>;
 
 	/// A trait to provide relative `base_price` of `base_settcurrency_id`. 
 	/// The settcurrency `Price` is `base_price * base_unit`.
@@ -210,13 +191,11 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 	/// in our example, `1_100` in `base_currency_peg: USD` of `JUSD` can buy `base_unit` of `JUSD` in `USD`.
 	fn get_stable_price(
 		base_settcurrency_id: CurrencyIdOf<T>,
-		base_price: u64,
+		base_price: BalanceOf<T>,
 	) -> DispatchResult {
-		type Fix = FixedU128<U64>;
-		let base_unit = T::GetBaseUnit;
-		let amount_of_peg_to_buy_base_currency = Fix::from_num(base_price) * Fix::from_num(base_unit);
-		native::info!("The price of: {} is {} in its peg currency.", base_settcurrency_id, amount_of_peg_to_buy_base_currency);
-		Self::deposit_event(RawEvent::NewPrice(base_settcurrency_id, amount_of_peg_to_buy_base_currency));
+		let base_unit = T::GetBaseUnit::get();
+		let amount_of_peg_to_buy_base_currency = base_price * base_unit;
+		Self::deposit_event(Event::NewPrice(base_settcurrency_id, amount_of_peg_to_buy_base_currency));
 		Ok(())
 	}
 	
@@ -228,13 +207,12 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 	/// But tyhe former is preffered and thus used.
 	fn get_relative_price(
 		base_currency_id: CurrencyIdOf<T>, 
-		base_price: u64, 
+		base_price: BalanceOf<T>, 
 		quote_currency_id: CurrencyIdOf<T>, 
-		quote_price: u64,
+		quote_price: BalanceOf<T>,
 	) -> DispatchResult {
-		type Fix = FixedU128<U64>;
-		let amount_of_quote_to_buy_base = Fix::from_num(base_price) / Fix::from_num(quote_price);
-		let amount_of_base_to_buy_quote = Fix::from_num(quote_price) / Fix::from_num(base_price);
+		let amount_of_quote_to_buy_base = base_price / quote_price;
+		let amount_of_base_to_buy_quote = quote_price / base_price;
 		Ok(())
 	}
 
@@ -245,24 +223,28 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 	/// `mint_rate = serp_quote_multiple`, and with `(price/base_unit) - 1 = price_change`.
 	///
 	/// Calculate the amount of currency price for SerpMarket's SerpQuote from a fraction given as `numerator` and `denominator`.
-	fn quote_serp_price(price: BalanceOf<T>) -> Self::Balance{
-		type Fix = FixedU128<U64>;
-		let base_unit = T::GetBaseUnit;
-		let serp_quote_multiple = T::GetSerpQuoteMultiple;
-		let fraction = Fix::from_num(price) / Fix::from_num(base_unit);
-		let fractioned = Fix::from_num(fraction) - Fix::from_num(1);
-		let quotation = fractioned.saturating_mul_int(serp_quote_multiple as u128).to_num::<u64>();
-		quoted = Fix::from_num(fraction) + Fix::from_num(quotation);
+	fn quote_serp_price(
+		currency_id: CurrencyIdOf<T>, 
+		price: BalanceOf<T>,
+	) -> Self::Balance{
+		let base_unit = T::GetBaseUnit::get();
+		let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
+		let fraction = price / base_unit;
+		let fractioned = fraction.saturating_sub(1);
+		let quotation = fractioned.saturating_mul_int(serp_quote_multiple);
+		let serp_quoted_price =  fraction + quotation;
+
+		Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
 		Ok(())
 	}
 
 	/// Calculate the amount of supply change from a fraction given as `numerator` and `denominator`.
-	fn calculate_supply_change(new_price: BalanceOf<T>) -> Self::Balance {
-		type Fix = FixedU128<U64>;
-		let base_unit = T::GetBaseUnit; 
-		let supply = T::Stp258Currency::total_issuance();
-		let fraction = Fix::from_num(new_price) / Fix::from_num(base_unit) - Fix::from_num(1);
-		fraction.saturating_mul_int(supply as u128).to_num::<u64>();
+	fn calculate_supply_change(currency_id: CurrencyIdOf<T>, new_price: BalanceOf<T>) -> Self::Balance {
+		let base_unit = T::GetBaseUnit::get(); 
+		let supply = T::Stp258Currency::total_issuance(currency_id);
+		let fraction = new_price / base_unit;
+		let fractioned = fraction.saturating_sub(1);
+		fractioned.saturating_mul_int(supply);
 		Ok(())
 	}
 
@@ -282,25 +264,23 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		let native_asset_id = T::GetStp258NativeId::get();
 		let serper = &T::GetSerperAcc::get(); 
 		let settpay = &T::GetSettPayAcc::get();
-		type Fix = FixedU128<U64>;
 		let base_currency_id = currency_id;
 		let quote_currency_id = native_asset_id;
 		let new_supply = supply + expand_by; 
-		let base_price = Fix::from_num(new_supply) / Fix::from_num(supply);
+		let base_price = new_supply / supply;
 		let price = Self::get_relative_price(
 			native_asset_id,
 			base_price,
 			currency_id, 
 			quote_price,
 		);
-		let supply_change = Self::calculate_supply_change(price);
-		let serp_quoted_price = Self::quote_serp_price(price);
+
+		let supply_change = expand_by;
+		let serp_quoted_price = Self::quote_serp_price(base_currency_id, price);
 		let settpay_ratio = &T::GetSettPayRatio::get(); // 75% for SettPay. It was statically typed, now moved to runtime and can be set there.
 		let serper_ratio = &T::GetSerperRatio::get(); // 25% for Serpers. It was statically typed, now moved to runtime and can be set there.
-		let total_ratio = 100;
-		let supply_ratio = expand_by.saturating_div_int(total_ratio); // Percentage, meaning 1%.
-		let settpay_distro = supply_ratio.saturating_mul_int(settpay_ratio); // 75% distro for SettPay.
-		let serper_distro = supply_ratio.saturating_mul_int(serper_ratio); // 25% distro for Serpers.
+		let settpay_distro = expand_by.saturating_mul_int(settpay_ratio); // 75% distro for SettPay.
+		let serper_distro = expand_by.saturating_mul_int(serper_ratio); // 25% distro for Serpers.
 		let pay_by_quoted = serper_distro.saturating_div_int(serp_quoted_price);
 		if currency_id == T::GetStp258NativeId::get() {
 			debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
@@ -323,7 +303,7 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 	/// the `native_currency` used to contract settcurrency supply.
 	fn contract_supply(
 		currency_id: Self::CurrencyId,
-		contract_by: BalanceOf<T>
+		contract_by: BalanceOf<T>,
 		quote_price: BalanceOf<T>, // the price of Dinar, so as to contract settcurrency supply.
 	) -> DispatchResult{
 		let supply = T::Stp258Currency::total_issuance(currency_id);
@@ -335,7 +315,7 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		let base_currency_id = currency_id;
 		let quote_currency_id = native_asset_id;
 		let new_supply = supply + contract_by; 
-		let base_price = Fix::from_num(new_supply) / Fix::from_num(supply);
+		let base_price = new_supply / supply;
 		let price = Self::get_relative_price(
 			currency_id, 
 			quote_price,
@@ -343,9 +323,9 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 			base_price, 
 		);
 		let supply_change = contract_by;
-		let serp_quoted_price = Self::quote_serp_price(price);
+		let serp_quoted_price = Self::quote_serp_price(base_currency_id, price);
 		let new_price = serp_quoted_price;
-		let pay_by_quoted = serp_quoted_price.saturating_mul_int(supply_change as u128).to_num::<u64>();
+		let pay_by_quoted = serp_quoted_price * supply_change;
 		if currency_id == T::GetStp258NativeId::get() {
 			debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
 			return Err(http::Error::Unknown);
@@ -358,432 +338,5 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		Self::deposit_event(Event::SerpedDownSupply(currency_id, contract_by));
 		Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
 		Ok(())
-	}
-}
-
-// Implement the Stp258Currency to allow other pallets to interact programmatically
-// with the Serp Stablecoins.
-impl<T: Config> Stp258Currency<T::AccountId> for Pallet<T> {
-	type CurrencyId = CurrencyIdOf<T>;
-	type Balance = BalanceOf<T>;
-
-	fn minimum_balance(currency_id: Self::CurrencyId) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::minimum_balance()
-		} else {
-			T::Stp258Currency::minimum_balance(currency_id)
-		}
-	}
-
-	fn total_issuance(currency_id: Self::CurrencyId) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::total_issuance()
-		} else {
-			T::Stp258Currency::total_issuance(currency_id)
-		}
-	}
-
-	fn total_balance(currency_id: Self::CurrencyId, who: &T::AccountId) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::total_balance(who)
-		} else {
-			T::Stp258Currency::total_balance(currency_id, who)
-		}
-	}
-
-	fn free_balance(currency_id: Self::CurrencyId, who: &T::AccountId) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::free_balance(who)
-		} else {
-			T::Stp258Currency::free_balance(currency_id, who)
-		}
-	}
-
-	fn ensure_can_withdraw(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::ensure_can_withdraw(who, amount)
-		} else {
-			T::Stp258Currency::ensure_can_withdraw(currency_id, who, amount)
-		}
-	}
-
-	fn transfer(
-		currency_id: Self::CurrencyId,
-		from: &T::AccountId,
-		to: &T::AccountId,
-		amount: Self::Balance,
-	) -> DispatchResult {
-		if amount.is_zero() || from == to {
-			return Ok(());
-		}
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::transfer(from, to, amount)?;
-		} else {
-			T::Stp258Currency::transfer(currency_id, from, to, amount)?;
-		}
-		Self::deposit_event(Event::Transferred(currency_id, from.clone(), to.clone(), amount));
-		Ok(())
-	}
-
-	fn deposit(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		if amount.is_zero() {
-			return Ok(());
-		}
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::deposit(who, amount)?;
-		} else {
-			T::Stp258Currency::deposit(currency_id, who, amount)?;
-		}
-		Self::deposit_event(Event::Deposited(currency_id, who.clone(), amount));
-		Ok(())
-	}
-
-	fn withdraw(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		if amount.is_zero() {
-			return Ok(());
-		}
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::withdraw(who, amount)?;
-		} else {
-			T::Stp258Currency::withdraw(currency_id, who, amount)?;
-		}
-		Self::deposit_event(Event::Withdrawn(currency_id, who.clone(), amount));
-		Ok(())
-	}
-
-	fn can_slash(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> bool {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::can_slash(who, amount)
-		} else {
-			T::Stp258Currency::can_slash(currency_id, who, amount)
-		}
-	}
-
-	fn slash(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::slash(who, amount)
-		} else {
-			T::Stp258Currency::slash(currency_id, who, amount)
-		}
-	}
-}
-
-impl<T: Config> Stp258CurrencyExtended<T::AccountId> for Pallet<T> {
-	type Amount = AmountOf<T>;
-
-	fn update_balance(currency_id: Self::CurrencyId, who: &T::AccountId, by_amount: Self::Amount) -> DispatchResult {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::update_balance(who, by_amount)?;
-		} else {
-			T::Stp258Currency::update_balance(currency_id, who, by_amount)?;
-		}
-		Self::deposit_event(Event::BalanceUpdated(currency_id, who.clone(), by_amount));
-		Ok(())
-	}
-}
-
-impl<T: Config> Stp258CurrencyReservable<T::AccountId> for Pallet<T> {
-	fn can_reserve(currency_id: Self::CurrencyId, who: &T::AccountId, value: Self::Balance) -> bool {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::can_reserve(who, value)
-		} else {
-			T::Stp258Currency::can_reserve(currency_id, who, value)
-		}
-	}
-
-	fn slash_reserved(currency_id: Self::CurrencyId, who: &T::AccountId, value: Self::Balance) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::slash_reserved(who, value)
-		} else {
-			T::Stp258Currency::slash_reserved(currency_id, who, value)
-		}
-	}
-
-	fn reserved_balance(currency_id: Self::CurrencyId, who: &T::AccountId) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::reserved_balance(who)
-		} else {
-			T::Stp258Currency::reserved_balance(currency_id, who)
-		}
-	}
-
-	fn reserve(currency_id: Self::CurrencyId, who: &T::AccountId, value: Self::Balance) -> DispatchResult {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::reserve(who, value)
-		} else {
-			T::Stp258Currency::reserve(currency_id, who, value)
-		}
-	}
-
-	fn unreserve(currency_id: Self::CurrencyId, who: &T::AccountId, value: Self::Balance) -> Self::Balance {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::unreserve(who, value)
-		} else {
-			T::Stp258Currency::unreserve(currency_id, who, value)
-		}
-	}
-
-	fn repatriate_reserved(
-		currency_id: Self::CurrencyId,
-		slashed: &T::AccountId,
-		beneficiary: &T::AccountId,
-		value: Self::Balance,
-		status: BalanceStatus,
-	) -> result::Result<Self::Balance, DispatchError> {
-		if currency_id == T::GetStp258NativeId::get() {
-			T::Stp258Native::repatriate_reserved(slashed, beneficiary, value, status)
-		} else {
-			T::Stp258Currency::repatriate_reserved(currency_id, slashed, beneficiary, value, status)
-		}
-	}
-}
-
-pub struct Currency<T, GetCurrencyId>(marker::PhantomData<T>, marker::PhantomData<GetCurrencyId>);
-
-impl<T, GetCurrencyId> Stp258Asset<T::AccountId> for Currency<T, GetCurrencyId>
-where
-	T: Config,
-	GetCurrencyId: Get<CurrencyIdOf<T>>,
-{
-	type Balance = BalanceOf<T>;
-
-	fn minimum_balance() -> Self::Balance {
-		<Pallet<T>>::minimum_balance(GetCurrencyId::get())
-	}
-
-	fn total_issuance() -> Self::Balance {
-		<Pallet<T>>::total_issuance(GetCurrencyId::get())
-	}
-
-	fn total_balance(who: &T::AccountId) -> Self::Balance {
-		<Pallet<T>>::total_balance(GetCurrencyId::get(), who)
-	}
-
-	fn free_balance(who: &T::AccountId) -> Self::Balance {
-		<Pallet<T>>::free_balance(GetCurrencyId::get(), who)
-	}
-
-	fn ensure_can_withdraw(who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		<Pallet<T>>::ensure_can_withdraw(GetCurrencyId::get(), who, amount)
-	}
-
-	fn transfer(from: &T::AccountId, to: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		<Pallet<T> as Stp258Currency<T::AccountId>>::transfer(GetCurrencyId::get(), from, to, amount)
-	}
-
-	fn deposit(who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		<Pallet<T>>::deposit(GetCurrencyId::get(), who, amount)
-	}
-
-	fn withdraw(who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
-		<Pallet<T>>::withdraw(GetCurrencyId::get(), who, amount)
-	}
-
-	fn can_slash(who: &T::AccountId, amount: Self::Balance) -> bool {
-		<Pallet<T>>::can_slash(GetCurrencyId::get(), who, amount)
-	}
-
-	fn slash(who: &T::AccountId, amount: Self::Balance) -> Self::Balance {
-		<Pallet<T>>::slash(GetCurrencyId::get(), who, amount)
-	}
-}
-
-impl<T, GetCurrencyId> Stp258AssetExtended<T::AccountId> for Currency<T, GetCurrencyId>
-where
-	T: Config,
-	GetCurrencyId: Get<CurrencyIdOf<T>>,
-{
-	type Amount = AmountOf<T>;
-
-	fn update_balance(who: &T::AccountId, by_amount: Self::Amount) -> DispatchResult {
-		<Pallet<T> as Stp258CurrencyExtended<T::AccountId>>::update_balance(GetCurrencyId::get(), who, by_amount)
-	}
-}
-
-impl<T, GetCurrencyId> Stp258AssetReservable<T::AccountId> for Currency<T, GetCurrencyId>
-where
-	T: Config,
-	GetCurrencyId: Get<CurrencyIdOf<T>>,
-{
-	fn can_reserve(who: &T::AccountId, value: Self::Balance) -> bool {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::can_reserve(GetCurrencyId::get(), who, value)
-	}
-
-	fn slash_reserved(who: &T::AccountId, value: Self::Balance) -> Self::Balance {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::slash_reserved(GetCurrencyId::get(), who, value)
-	}
-
-	fn reserved_balance(who: &T::AccountId) -> Self::Balance {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::reserved_balance(GetCurrencyId::get(), who)
-	}
-
-	fn reserve(who: &T::AccountId, value: Self::Balance) -> DispatchResult {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::reserve(GetCurrencyId::get(), who, value)
-	}
-
-	fn unreserve(who: &T::AccountId, value: Self::Balance) -> Self::Balance {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::unreserve(GetCurrencyId::get(), who, value)
-	}
-
-	fn repatriate_reserved(
-		slashed: &T::AccountId,
-		beneficiary: &T::AccountId,
-		value: Self::Balance,
-		status: BalanceStatus,
-	) -> result::Result<Self::Balance, DispatchError> {
-		<Pallet<T> as Stp258CurrencyReservable<T::AccountId>>::repatriate_reserved(
-			GetCurrencyId::get(),
-			slashed,
-			beneficiary,
-			value,
-			status,
-		)
-	}
-}
-
-pub type Stp258NativeOf<T> = Currency<T, <T as Config>::GetStp258NativeId>;
-
-/// Adapt other currency traits implementation to `Stp258Asset`.
-pub struct Stp258AssetAdapter<T, Currency, Amount, Moment>(marker::PhantomData<(T, Currency, Amount, Moment)>);
-
-type PalletBalanceOf<A, Currency> = <Currency as SetheumCurrency<A>>::Balance;
-
-// Adapt `frame_support::traits::Currency`
-impl<T, AccountId, Currency, Amount, Moment> Stp258Asset<AccountId>
-	for Stp258AssetAdapter<T, Currency, Amount, Moment>
-where
-	Currency: SetheumCurrency<AccountId>,
-	T: Config,
-{
-	type Balance = PalletBalanceOf<AccountId, Currency>;
-
-	fn minimum_balance() -> Self::Balance {
-		Currency::minimum_balance()
-	}
-
-	fn total_issuance() -> Self::Balance {
-		Currency::total_issuance()
-	}
-
-	fn total_balance(who: &AccountId) -> Self::Balance {
-		Currency::total_balance(who)
-	}
-
-	fn free_balance(who: &AccountId) -> Self::Balance {
-		Currency::free_balance(who)
-	}
-
-	fn ensure_can_withdraw(who: &AccountId, amount: Self::Balance) -> DispatchResult {
-		let new_balance = Self::free_balance(who)
-			.checked_sub(&amount)
-			.ok_or(Error::<T>::BalanceTooLow)?;
-
-		Currency::ensure_can_withdraw(who, amount, WithdrawReasons::all(), new_balance)
-	}
-
-	fn transfer(from: &AccountId, to: &AccountId, amount: Self::Balance) -> DispatchResult {
-		Currency::transfer(from, to, amount, ExistenceRequirement::AllowDeath)
-	}
-
-	fn deposit(who: &AccountId, amount: Self::Balance) -> DispatchResult {
-		let _ = Currency::deposit_creating(who, amount);
-		Ok(())
-	}
-
-	fn withdraw(who: &AccountId, amount: Self::Balance) -> DispatchResult {
-		Currency::withdraw(who, amount, WithdrawReasons::all(), ExistenceRequirement::AllowDeath).map(|_| ())
-	}
-
-	fn can_slash(who: &AccountId, amount: Self::Balance) -> bool {
-		Currency::can_slash(who, amount)
-	}
-
-	fn slash(who: &AccountId, amount: Self::Balance) -> Self::Balance {
-		let (_, gap) = Currency::slash(who, amount);
-		gap
-	}
-}
-
-// Adapt `frame_support::traits::Currency`
-impl<T, AccountId, Currency, Amount, Moment> Stp258AssetExtended<AccountId>
-	for Stp258AssetAdapter<T, Currency, Amount, Moment>
-where
-	Amount: Signed
-		+ TryInto<PalletBalanceOf<AccountId, Currency>>
-		+ TryFrom<PalletBalanceOf<AccountId, Currency>>
-		+ SimpleArithmetic
-		+ Codec
-		+ Copy
-		+ MaybeSerializeDeserialize
-		+ Debug
-		+ Default,
-	Currency: SetheumCurrency<AccountId>,
-	T: Config,
-{
-	type Amount = Amount;
-
-	fn update_balance(who: &AccountId, by_amount: Self::Amount) -> DispatchResult {
-		let by_balance = by_amount
-			.abs()
-			.try_into()
-			.map_err(|_| Error::<T>::AmountIntoBalanceFailed)?;
-		if by_amount.is_positive() {
-			Self::deposit(who, by_balance)
-		} else {
-			Self::withdraw(who, by_balance)
-		}
-	}
-}
-
-// Adapt `frame_support::traits::ReservableCurrency`
-impl<T, AccountId, Currency, Amount, Moment> Stp258AssetReservable<AccountId>
-	for Stp258AssetAdapter<T, Currency, Amount, Moment>
-where
-	Currency: SetheumReservableCurrency<AccountId>,
-	T: Config,
-{
-	fn can_reserve(who: &AccountId, value: Self::Balance) -> bool {
-		Currency::can_reserve(who, value)
-	}
-
-	fn slash_reserved(who: &AccountId, value: Self::Balance) -> Self::Balance {
-		let (_, gap) = Currency::slash_reserved(who, value);
-		gap
-	}
-
-	fn reserved_balance(who: &AccountId) -> Self::Balance {
-		Currency::reserved_balance(who)
-	}
-
-	fn reserve(who: &AccountId, value: Self::Balance) -> DispatchResult {
-		Currency::reserve(who, value)
-	}
-
-	fn unreserve(who: &AccountId, value: Self::Balance) -> Self::Balance {
-		Currency::unreserve(who, value)
-	}
-
-	fn repatriate_reserved(
-		slashed: &AccountId,
-		beneficiary: &AccountId,
-		value: Self::Balance,
-		status: BalanceStatus,
-	) -> result::Result<Self::Balance, DispatchError> {
-		Currency::repatriate_reserved(slashed, beneficiary, value, status)
-	}
-}
-
-impl<T: Config> MergeAccount<T::AccountId> for Pallet<T> {
-	fn merge_account(source: &T::AccountId, dest: &T::AccountId) -> DispatchResult {
-		with_transaction_result(|| {
-			// transfer non-native free to dest
-			T::Stp258Currency::merge_account(source, dest)?;
-
-			// unreserve all reserved currency
-			T::Stp258Native::unreserve(source, T::Stp258Native::reserved_balance(source));
-
-			// transfer all free to dest
-			T::Stp258Native::transfer(source, dest, T::Stp258Native::free_balance(source))
-		})
 	}
 }
