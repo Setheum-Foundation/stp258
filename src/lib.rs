@@ -19,7 +19,7 @@ use stp258_traits::{
 };
 use orml_utilities::with_transaction_result;
 use sp_runtime::{
-	traits::{CheckedSub, MaybeSerializeDeserialize, StaticLookup, Zero},
+	traits::{CheckedMul, CheckedDiv, CheckedSub, CheckedAdd, MaybeSerializeDeserialize, StaticLookup, Zero},
 	DispatchError, DispatchResult,
 };
 use sp_std::{
@@ -69,14 +69,39 @@ pub mod module {
 			+ Stp258AssetLockable<Self::AccountId, Balance = BalanceOf<Self>>
 			+ Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
 
+		
 		#[pallet::constant]
 		type GetStp258NativeId: Get<CurrencyIdOf<Self>>;
 
 
 		/// The balance of an account.
 		#[pallet::constant]
-		type GetBaseUnit: Get<u64>;
-		
+		type GetBaseUnit: Get<BalanceOf<Self>>;
+
+		/// The single unit to avoid data loss with mized type arithmetic.
+		#[pallet::constant]
+		type GetSingleUnit: Get<BalanceOf<Self>>;
+
+		/// The Serper ratio type getter
+		#[pallet::constant]
+		type GetSerperRatio: Get<BalanceOf<Self>>;
+
+		/// The SettPay ratio type getter
+		#[pallet::constant]
+		type GetSettPayRatio: Get<BalanceOf<Self>>;	
+
+		/// The SettPay Account type
+		#[pallet::constant]
+		type GetSettPayAcc: Get<Self::AccountId>;
+
+		/// The Serpers Account type
+		#[pallet::constant]
+		type GetSerperAcc: Get<Self::AccountId>;
+
+		/// The Serp quote multiple type for qUOTE, quoting 
+		/// `(mintrate * SERP_QUOTE_MULTIPLE) = SerpQuotedPrice`.
+		#[pallet::constant]
+		type GetSerpQuoteMultiple: Get<BalanceOf<Self>>;
 
 		/// Weight information for extrinsics in this module.
 		type WeightInfo: WeightInfo;
@@ -88,6 +113,8 @@ pub mod module {
 		AmountIntoBalanceFailed,
 		/// Balance is too low.
 		BalanceTooLow,
+		// Cannott expand or contract Native Asset, only SettCurrency	Serping.
+		CannotSerpNativeAssetOnlySerpSettCurrency,
 	}
 
 	#[pallet::event]
@@ -101,6 +128,12 @@ pub mod module {
 		Deposited(CurrencyIdOf<T>, T::AccountId, BalanceOf<T>),
 		/// Withdraw success. [currency_id, who, amount]
 		Withdrawn(CurrencyIdOf<T>, T::AccountId, BalanceOf<T>),
+		/// Serp Expand Supply successful. [currency_id, who, amount]
+		SerpedUpSupply(CurrencyIdOf<T>, BalanceOf<T>),
+		/// Serp Contract Supply successful. [currency_id, who, amount]
+		SerpedDownSupply(CurrencyIdOf<T>, BalanceOf<T>),
+		/// The New Price of Currency. [currency_id, price]
+		NewPrice(CurrencyIdOf<T>, BalanceOf<T>),
 	}
 
 
@@ -158,6 +191,88 @@ pub mod module {
 			ensure_root(origin)?;
 			let dest = T::Lookup::lookup(who)?;
 			<Self as Stp258CurrencyExtended<T::AccountId>>::update_balance(currency_id, &dest, amount)?;
+			Ok(().into())
+		}
+
+		/// Called when `expand_supply` is received from the SERP.
+		/// Implementation should `deposit` the `amount` to `serpup_to`, 
+		/// then `amount` will be slashed from `serpup_from` and update
+		/// `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
+		/// the `native_currency` used to expand settcurrency supply.
+		#[pallet::weight(0)]
+		fn expand_supply(
+			origin: OriginFor<T>,
+			currency_id: CurrencyIdOf<T>, 
+			expand_by: BalanceOf<T>,
+			quote_price: BalanceOf<T>, // the price of Dinar, so as to expand settcurrency supply.
+		) -> DispatchResultWithPostInfo {
+			ensure_root(origin)?;
+			let supply = T::Stp258Currency::total_issuance(currency_id);
+			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
+			// ↑ verify ↑
+			let serper = &T::GetSerperAcc::get(); 
+			let new_supply = supply + expand_by; 
+			let base_price = new_supply / supply;
+			let price = base_price / quote_price;
+			let supply_change = expand_by;
+			let base_unit = T::GetBaseUnit::get();
+			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
+			let fraction = price / base_unit;
+			let fractioned = fraction - T::GetSingleUnit::get();
+			let quotation = fractioned * serp_quote_multiple;
+			let serp_quoted_price =  fraction + quotation;
+			let pay_by_quoted = supply_change / serp_quoted_price;
+			if currency_id == T::GetStp258NativeId::get() {
+				Error::<T>::CannotSerpNativeAssetOnlySerpSettCurrency;
+			} else {
+				T::Stp258Currency::deposit(currency_id, serper, expand_by);
+				T::Stp258Currency::reserve(currency_id, serper, expand_by);
+				T::Stp258Native::slash_reserved(serper, pay_by_quoted);
+			}
+			// both slash and deposit take care of total issuance, therefore nothing more to do.
+			Self::deposit_event(Event::SerpedUpSupply(currency_id, expand_by));
+			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
+			Ok(().into())
+		}
+
+		/// Called when `contract_supply` is received from the SERP.
+		/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
+		/// of `amount` to `serpup_to`, then `amount` will be slashed from `serpup_from` 
+		/// and update `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
+		/// the `native_currency` used to contract settcurrency supply.
+		#[pallet::weight(0)]
+		fn contract_supply(
+			origin: OriginFor<T>,
+			currency_id: CurrencyIdOf<T>,
+			contract_by: BalanceOf<T>,
+			quote_price: BalanceOf<T>, // the price of Dinar, so as to contract settcurrency supply.
+		) -> DispatchResultWithPostInfo {
+			ensure_root(origin)?;
+			let supply = T::Stp258Currency::total_issuance(currency_id);
+			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
+			// ↑ verify ↑
+			let serper = &T::GetSerperAcc::get();
+			let new_supply = supply + contract_by; 
+			let base_price = new_supply / supply;
+			let price = base_price / quote_price;
+			let supply_change = contract_by;
+			let base_unit = T::GetBaseUnit::get();
+			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
+			let fraction = price / base_unit;
+			let fractioned = fraction - T::GetSingleUnit::get();
+			let quotation = fractioned * serp_quote_multiple;
+			let serp_quoted_price =  fraction + quotation;
+			let pay_by_quoted = serp_quoted_price * supply_change;
+			if currency_id == T::GetStp258NativeId::get() {
+				Error::<T>::CannotSerpNativeAssetOnlySerpSettCurrency;
+			} else {
+				T::Stp258Currency::slash_reserved(currency_id, serper, contract_by);
+				T::Stp258Native::deposit(serper, pay_by_quoted);
+				T::Stp258Native::reserve(serper, pay_by_quoted);
+			}
+			// both slash and deposit take care of total issuance, therefore nothing more to do.
+			Self::deposit_event(Event::SerpedDownSupply(currency_id, contract_by));
+			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
 			Ok(().into())
 		}
 	}
