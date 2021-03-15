@@ -8,7 +8,6 @@ use frame_support::{construct_runtime, parameter_types};
 use stp258_traits::parameter_type_with_key;
 use sp_core::H256;
 use sp_runtime::{
-	Perbill,
 	testing::Header,
 	traits::{AccountIdConversion, IdentityLookup},
 	AccountId32, ModuleId,
