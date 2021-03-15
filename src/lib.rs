@@ -238,15 +238,6 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		Ok(())
 	}
 
-	/// Calculate the amount of supply change from a fraction given as `numerator` and `denominator`.
-	fn calculate_supply_change(currency_id: CurrencyIdOf<T>, new_price: BalanceOf<T>) -> Self::Balance {
-		let base_unit = T::GetBaseUnit::get(); 
-		let supply = T::Stp258Currency::total_issuance(currency_id);
-		let fraction = new_price / base_unit;
-		let fractioned = fraction.saturating_sub(1);
-		fractioned.saturating_mul_int(supply);
-		Ok(())
-	}
 
 	/// Called when `expand_supply` is received from the SERP.
 	/// Implementation should `deposit` the `amount` to `serpup_to`, 
