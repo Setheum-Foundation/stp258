@@ -8,6 +8,7 @@ use stp258_traits::parameter_type_with_key;
 use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
+	Perbill,
 	traits::{AccountIdConversion, IdentityLookup},
 	AccountId32, ModuleId,
 };
@@ -89,8 +90,8 @@ pub const STP258_JCHF_ID: CurrencyId = 4;
 const STP258_BASE_UNIT: Balance = 1000;
 
 const SERP_QUOTE_MULTIPLE: Balance = 2;
-const SERPER_RATIO: Balance = 25;
-const SETT_PAY_RATIO: Balance = 75;
+const SERPER_RATIO: Perbill = Perbill::from_percent(25);
+const SETT_PAY_RATIO: Perbill = Perbill::from_percent(75);
 
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
