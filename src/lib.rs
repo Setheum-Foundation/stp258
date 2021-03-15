@@ -116,6 +116,8 @@ pub mod module {
 		AmountIntoBalanceFailed,
 		/// Balance is too low.
 		BalanceTooLow,
+		/// Cannot Serp Native Asset, only serp SettCurrency.
+		CannotSerpNativeAssetOnlySerpSettCurrency,
 	}
 
 	#[pallet::event]
@@ -274,8 +276,7 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		let serper_distro = expand_by.saturating_mul_int(serper_ratio); // 25% distro for Serpers.
 		let pay_by_quoted = serper_distro.saturating_div_int(serp_quoted_price);
 		if currency_id == T::GetStp258NativeId::get() {
-			debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
-			return Err(http::Error::Unknown);
+			Error::<T>::CannotSerpNativeAssetOnlySerpSettCurrency;
 		} else {
 			T::Stp258Currency::deposit(currency_id, settpay, settpay_distro);
 			T::Stp258Currency::reserve(currency_id, serper, serper_distro);
@@ -318,8 +319,7 @@ impl<T: Config> SerpMarket<CurrencyIdOf<T>, T::AccountId,  BalanceOf<T>> for Pal
 		let new_price = serp_quoted_price;
 		let pay_by_quoted = serp_quoted_price * supply_change;
 		if currency_id == T::GetStp258NativeId::get() {
-			debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
-			return Err(http::Error::Unknown);
+			Error::<T>::CannotSerpNativeAssetOnlySerpSettCurrency;
 		} else {
 			T::Stp258Currency::slash_reserved(currency_id, serper, contract_by);
 			T::Stp258Native::deposit(serper, pay_by_quoted);
