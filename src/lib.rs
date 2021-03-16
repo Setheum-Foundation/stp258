@@ -132,8 +132,6 @@ pub mod module {
 		SerpedUpSupply(CurrencyIdOf<T>, BalanceOf<T>),
 		/// Serp Contract Supply successful. [currency_id, who, amount]
 		SerpedDownSupply(CurrencyIdOf<T>, BalanceOf<T>),
-		/// The New Price of Currency. [currency_id, price]
-		NewPrice(CurrencyIdOf<T>, BalanceOf<T>),
 	}
 
 
@@ -224,7 +222,6 @@ pub mod module {
 				T::Stp258Native::slash_reserved(serper, pay_by_quoted);
 			// both slash and deposit take care of total issuance, therefore nothing more to do.
 			Self::deposit_event(Event::SerpedUpSupply(currency_id, expand_by));
-			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
 			Ok(().into())
 		}
 
@@ -239,13 +236,14 @@ pub mod module {
 			currency_id: CurrencyIdOf<T>,
 			contract_by: BalanceOf<T>,
 			quote_price: BalanceOf<T>, // the price of Dinar, so as to contract settcurrency supply.
+			base_price: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			ensure_root(origin)?;
 			let supply = T::Stp258Currency::total_issuance(currency_id);
 			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
 			// ↑ verify ↑
 			let serper = &T::GetSerperAcc::get();
-			let new_supply = supply - contract_by; 
+			let new_supply = supply.saturating_sub(contract_by); 
 			let base_price = new_supply / supply;
 			let _base_unit = T::GetBaseUnit::get();
 			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
@@ -258,7 +256,6 @@ pub mod module {
 				T::Stp258Native::deposit(serper, pay_by_quoted);
 			// both slash and deposit take care of total issuance, therefore nothing more to do.
 			Self::deposit_event(Event::SerpedDownSupply(currency_id, contract_by));
-			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
 			Ok(().into())
 		}
 	}
