@@ -84,8 +84,6 @@ impl stp258_tokens::Config for Runtime {
 
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
-pub const STP258_JUSD_ID: CurrencyId = 3;
-pub const STP258_JCHF_ID: CurrencyId = 4;
 
 const STP258_BASE_UNIT: Balance = 1000;
 
@@ -140,9 +138,6 @@ construct_runtime!(
 
 pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
 pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
-pub const ALICE: AccountId = AccountId32::new([3u8; 32]);
-pub const BOB: AccountId = AccountId32::new([4u8; 32]);
-pub const EVA: AccountId = AccountId32::new([5u8; 32]);
 
 pub const ID_1: LockIdentifier = *b"1       ";
 
@@ -164,25 +159,12 @@ impl ExtBuilder {
 		self
 	}
 
-	pub fn one_hundred_for_alice_n_bob(self) -> Self {
-		self.balances(vec![
-			(ALICE, STP258_NATIVE_ID, 100),
-			(BOB, STP258_NATIVE_ID, 100),
-			(ALICE, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
-			(BOB, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
-		])
-	}
-
 	pub fn five_hundred_thousand_for_sett_pay_n_serper(self) -> Self {
 		self.balances(vec![
 			(SETT_PAY_ACC, STP258_NATIVE_ID, 500_000),
 			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
 			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
 			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
 		])
 	}
 

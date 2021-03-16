@@ -220,13 +220,8 @@ pub mod module {
 			let serp_quoted_price =  base_price - quotation;
 			let price = quote_price / serp_quoted_price;
 			let pay_by_quoted = expand_by / price;
-			if currency_id == T::GetStp258NativeId::get() {
-				Error::<T>::CannotSerpNativeAssetOnlySerpSettCurrency;
-			} else {
-				<Self as Stp258Currency<T::AccountId>>::deposit(currency_id, serper, expand_by);
-				<Self as Stp258CurrencyReservable<T::AccountId>>::reserve(currency_id, serper, expand_by);
+				<Self as Stp258Currency<T::AccountId>>::deposit(currency_id, serper, expand_by);                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
 				T::Stp258Native::slash_reserved(serper, pay_by_quoted);
-			}
 			// both slash and deposit take care of total issuance, therefore nothing more to do.
 			Self::deposit_event(Event::SerpedUpSupply(currency_id, expand_by));
 			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
@@ -261,7 +256,6 @@ pub mod module {
 			let pay_by_quoted = price * contract_by;
 				<Self as Stp258CurrencyReservable<T::AccountId>>::slash_reserved(currency_id, serper, contract_by);
 				T::Stp258Native::deposit(serper, pay_by_quoted);
-				T::Stp258Native::reserve(serper, pay_by_quoted);
 			// both slash and deposit take care of total issuance, therefore nothing more to do.
 			Self::deposit_event(Event::SerpedDownSupply(currency_id, contract_by));
 			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
