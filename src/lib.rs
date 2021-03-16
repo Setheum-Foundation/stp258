@@ -196,7 +196,7 @@ pub mod module {
 
 		/// Called when `expand_supply` is received from the SERP.
 		/// Implementation should `deposit` the `amount` to `serpup_to`, 
-		/// then `amount` will be slashed from `serpup_from` and update
+		/// then `amount` will be slashed from `serper` and update
 		/// `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
 		/// the `native_currency` used to expand settcurrency supply.
 		#[pallet::weight(0)]
@@ -230,7 +230,7 @@ pub mod module {
 
 		/// Called when `contract_supply` is received from the SERP.
 		/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
-		/// of `amount` to `serpup_to`, then `amount` will be slashed from `serpup_from` 
+		/// of `amount` to `serper`, then `amount` will be slashed from `serper` 
 		/// and update `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
 		/// the `native_currency` used to contract settcurrency supply.
 		#[pallet::weight(0)]
