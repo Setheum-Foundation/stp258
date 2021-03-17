@@ -236,15 +236,12 @@ pub mod module {
 			currency_id: CurrencyIdOf<T>,
 			contract_by: BalanceOf<T>,
 			quote_price: BalanceOf<T>, // the price of Dinar, so as to contract settcurrency supply.
-			base_price: BalanceOf<T>,
+			base_price: BalanceOf<T>, // the price of SettCurrency, so as to contract the supply.
 		) -> DispatchResultWithPostInfo {
 			ensure_root(origin)?;
-			let supply = T::Stp258Currency::total_issuance(currency_id);
 			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
 			// ↑ verify ↑
 			let serper = &T::GetSerperAcc::get();
-			let new_supply = supply.saturating_sub(contract_by); 
-			let base_price = new_supply / supply;
 			let _base_unit = T::GetBaseUnit::get();
 			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
 			let fraction = base_price - T::GetSingleUnit::get();
