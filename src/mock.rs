@@ -130,7 +130,7 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
-		SerpMarket: serp_market::{Module, Call, Event<T>},
+		Market: serp_market::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}
